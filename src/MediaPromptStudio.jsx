@@ -4,7 +4,7 @@ import { ImageIcon, Video, Copy, Check, Loader2, X, Wand2, Sparkles, AlertCircle
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const MODELS = {
   analyze: 'gemini-3.8-flash',
-  image: 'gemini-3.1-flash-image',
+ image: 'gemini-nano-banana-2.1',
   video: 'gemini-omni-1.1-flash',
 };
 
