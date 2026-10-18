@@ -3,9 +3,9 @@ import { ImageIcon, Video, Copy, Check, Loader2, X, Wand2, Sparkles, AlertCircle
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const MODELS = {
-  analyze: 'gemini-2.5-flash',
-  image: 'gemini-2.5-flash-image',
-  video: 'veo-3.0-fast-generate-001',
+  analyze: 'gemini-3.8-flash',
+  image: 'gemini-3.1-flash-image',
+  video: 'gemini-omni-1.1-flash',
 };
 
 const toBase64 = (file) =>
@@ -132,28 +132,36 @@ export default function App() {
     if (!prompt.trim() || needKey()) return;
     setBusy('video'); setError(null);
     const t0 = Date.now();
+    const tick = setInterval(
+      () => setStatus(`Omni sedang membuat video… ${Math.round((Date.now() - t0) / 1000)} detik`), 1000);
+    setStatus('Omni sedang membuat video…');
     try {
-      setStatus('Mengirim permintaan video…');
-      const r = await callApi(apiKey, `models/${MODELS.video}:predictLongRunning`, {
+      const r = await callApi(apiKey, 'interactions', {
         method: 'POST',
-        body: JSON.stringify({ instances: [{ prompt }], parameters: { aspectRatio: ratio } }),
+        body: JSON.stringify({
+          model: MODELS.video,
+          input: prompt,
+          response_format: { type: 'video', aspect_ratio: ratio, resolution: '720p' },
+        }),
       });
-      const { name } = await r.json();
-      let op;
-      for (let i = 0; i < 60; i++) {
-        await new Promise((res) => setTimeout(res, 8000));
-        setStatus(`Video sedang dirender… ${Math.round((Date.now() - t0) / 1000)} detik`);
-        op = await (await callApi(apiKey, name)).json();
-        if (op.done) break;
-      }
-      if (!op?.done) throw new Error('Render video terlalu lama. Coba lagi.');
-      if (op.error) throw new Error(op.error.message);
-      const uri = op.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri;
-      if (!uri) throw new Error('Video ditolak atau tidak dihasilkan (mungkin terkena filter keamanan).');
-      setStatus('Mengunduh video…');
-      const blob = await (await callApi(apiKey, uri)).blob();
+      const j = await r.json();
+      const out = (j.steps || [])
+        .filter((st) => st.type === 'model_output')
+        .flatMap((st) => st.content || [])
+        .find((c) => c.type === 'video') || j.output_video;
+      if (!out) throw new Error('Omni tidak mengembalikan video. Prompt mungkin diblokir filter keamanan.');
+      let blob;
+      if (out.data) {
+        const bin = atob(out.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        blob = new Blob([bytes], { type: out.mime_type || 'video/mp4' });
+      } else if (out.uri) {
+        blob = await (await callApi(apiKey, out.uri)).blob();
+      } else throw new Error('Format respons video tidak dikenali.');
       setGallery((g) => [{ id: Date.now(), type: 'video', url: URL.createObjectURL(blob), prompt }, ...g]);
     } catch (e) { setError(e.message); }
+    clearInterval(tick);
     setBusy(null); setStatus('');
   };
 
@@ -291,7 +299,7 @@ export default function App() {
           <h2 className="text-xl font-bold mb-4">Hasil</h2>
           {gallery.length === 0 ? (
             <p className="text-stone-500 text-sm border border-dashed border-stone-800 rounded-2xl p-8 text-center">
-              Gambar dan video yang Anda buat akan muncul di sini. Video biasanya butuh 1–3 menit.
+              Gambar dan video yang Anda buat akan muncul di sini. Video Omni biasanya butuh sekitar 1 menit.
             </p>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
